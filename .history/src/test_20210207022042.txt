@@ -1,0 +1,161 @@
+Rust Traits and Trait Objects
+Published 2018-06-12 on Joshleeb's blog
+
+I’ve been really confused lately about Rust’s trait objects. Specifically when it comes to questions about the difference between &Trait, Box<Trait>, impl Trait, and dyn Trait.
+
+For a quick recap on traits you can do no better than to look at the new (2nd edn) of the Rust Book, and Rust by Example:
+
+Rust Book Traits: Defining Shared Behavior
+Rust Book Advanced Traits
+Rust by Example Traits
+Trait Objects
+The elevator pitch for trait objects in Rust is that they help you with polymorphism, which is just a fancy word for:
+
+A single interface to entities of different types.
+When you have multiple different types behind a single interface, usually an abstract type, the interface needs to be able to tell which concrete type to access.
+
+Which brings us to dispatch. From the old Rust Book:
+
+When code involves polymorphism, there needs to be a mechanism to determine which specific version is actually run. This is called ‘dispatch’. There are two major forms of dispatch: static dispatch and dynamic dispatch. While Rust favors static dispatch, it also supports dynamic dispatch through a mechanism called ‘trait objects’.
+Static Dispatch
+Let’s start with the default in Rust. Static dispatch, often called “early binding”, since it happens at compile time. Here, the compiler will duplicate generic functions, changing the name of each duplicate slightly and filling in the type information it has. Then it will select which of the duplicates is the correct one to call for each generic case.
+
+This process, called Monomorphization, is what happens most notably with generics. And I think that a generics example is much easier to understand.
+
+fn show_item<T: fmt::Display>(item: T) {
+    println!("Item: {}", item);
+}
+Here we have a generic function called show_item which takes any item with a type, called type T, that implements the Display trait.
+
+struct CanDisplay;
+
+impl fmt::Display for CanDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "CanDisplay")
+    }
+}
+
+struct AlsoDisplay;
+
+impl fmt::Display for AlsoDisplay {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "AlsoDisplay")
+    }
+}
+
+fn main() {
+    let a: CanDisplay = CanDisplay;
+    let b: AlsoDisplay = AlsoDisplay;
+
+    show_item(a)    // stdout `Item: CanDisplay`
+    show_item(b)    // stdout `Item: AlsoDisplay`
+}
+During compilation, the compiler works out that show_item is being called with a CanDisplay type and with a AlsoDisplay type. So it creates two versions of show_item.
+
+fn show_item_can_display(item: CanDisplay) {
+    println!("Item: {}", item);
+}
+
+fn show_item_also_display(item: AlsoDisplay) {
+    println!("Item: {}", item);
+}
+And then fills in the correct generated functions based on the types the generic functions are called with.
+
+fn main() {
+    let a: CanDisplay = CanDisplay;
+    let b: AlsoDisplay = AlsoDisplay;
+
+    show_item_can_display(a)
+    show_item_also_display(b)
+}
+This isn’t exactly what it looks like or what the compiler does but it illustrates the idea nicely.
+
+Dynamic Dispatch
+Now, dynamic dispatch is the opposite of static dispatch, and as you would expect it is sometimes called “late-binding” since it happens at run time. In Rust, and most other languages, this is done with a vtable.
+
+A vtable is essentially a mapping of trait objects to a bunch of pointers. I think the Rust Book has a clear and concise explanation that is better than my explanation of this one.
+
+At runtime, Rust uses the pointers inside the trait object to know which specific method to call. There is a runtime cost when this lookup happens that doesn’t occur with static dispatch. Dynamic dispatch also prevents the compiler from choosing to inline a method’s code, which in turn prevents some optimizations.
+For more info on dispatch in Rust, and other languages, take a look at these articles.
+
+Dynamic vs Static Dispatch by Lukas Atkinson
+Exploring Dynamic Dispatch in Rust by Adam Schwalm
+Rust Book: Trait Objects
+&Trait
+&Trait is a trait object that is a reference to any type that implements Trait.
+
+struct A<'a> {
+    object: &'a Trait
+}
+For struct A to hold an attribute of type &Trait we have to provide it with an explicit lifetime annotation. This is the same as if object were a reference to a String or Vec.
+
+Box<Trait>
+Box<Trait> is also a trait object and is part of the same ‘family’ as &Trait.
+
+Just as i32 is the owned type, and &i32 is the reference type, we have Box<Trait> as the owned type, and &Trait as the reference type.
+
+struct A {
+    object: Box<Trait>
+}
+impl Trait
+impl Trait is a bit different to &Trait, and Box<Trait> in that it is implemented through static dispatch. This also means that the compiler will replace every impl Trait with a concrete type at compile time.
+
+So really, it seems that impl Trait behaves similarly to generics. Yet there are some differences, even in the most basic case.
+
+If a function returns impl Trait, its body can return values of any type that implements Trait, but all return values need to be of the same type.
+What that means is something like this is fine.
+
+fn get_nums(a: u32, b: u32) -> impl Iterator<Item = u32> {
+    (a..b).filter(|x| x % 100 == 0)
+}
+
+fn main() {
+    for n in get_nums(100, 1001) {
+        println!("{}", n);
+    }
+}
+Here get_nums() has only one concrete return type which is Filter<Range<u32>, Closure>.
+
+But something like this is not.
+
+fn get_nums(a: u32, b: u32) -> impl Iterator<Item = u32> {
+    if b < 100 {
+        (a..b).filter(|x| x % 10 == 0)
+    } else {
+        (a..b).filter(|x| x % 100 == 0)
+    }
+}
+
+fn main() {
+    for n in get_nums(100, 1001) {
+        println!("{}", n);
+    }
+}
+This gives us an error note: no two closures, even if identical, have the same type.
+
+To full motivation for this, and the impl Trait as a whole, is in RFC-1522 as well as other RFCs mentioned in the tracking-issue. They do a great job in arguing why impl Trait is a valuable language feature to have in Rust, and when to use it as opposed to trait objects.
+
+Since impl Trait uses static dispatch, there is no run-time overhead that applies when using it, as opposed to the trait object which will impose a run-time cost. So you may be thinking that you should replace
+
+    fn f(...) -> Box<Trait> { ... }
+With
+
+    fn f(...) -> impl Trait { ... }
+Everywhere in your rust code.
+
+But, before you get to that it’s worth taking a look at this thread on r/rust.
+
+The TL;DR is that there are some things you should consider before jumping completely on the impl Trait bandwagon. It’s still a relatively new feature. Looking at the tracking issue, there are some features that are yet to be implemented, and some questions that haven’t been resolved.
+
+That being said, there are definitely times where using it is worth the slight increase in compile time.
+
+dyn Trait
+The dyn in dyn Trait stands for dynamic. The idea of dyn Trait is to replace the use of bare trait syntax that is currently the norm in Rust codebases.
+
+Base trait syntax is what we’ve seen so far with &Trait and Box<Trait>, but dyn trait syntax, as specified in rfc-2113, has the motivation that
+
+impl Trait is going to require a significant shift in idioms and teaching materials all on its own, and “dyn Trait vs impl Trait” is much nicer for teaching and ergonomics than “bare trait vs impl Trait”
+So really, dyn Trait is nothing new. It just means that instead of seeing &Trait, &mut Trait, and Box<Trait>, in the Rust 2018 epoch it will (most likely) be &dyn Trait, &mut dyn Trait, and Box<dyn Trait>.
+
+Wrapping Up
+Writing this has really helped to understand these different ways of using traits in Rust. Initially each one seemed complicated and, in the case of impl Trait, unnecessary. But now it’s much clearer that each one has a specific purpose.

@@ -1,0 +1,3 @@
+pub trait Ided {
+    ided()
+}
