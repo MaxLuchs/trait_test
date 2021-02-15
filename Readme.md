@@ -10,6 +10,9 @@ Cons:
 # Alternative solution for using ```Box<dyn trait>``` for Traits: https://bennetthardwick.com/blog/dont-use-boxed-trait-objects-for-struct-internals/
 Define an Enum containing all subtypes and implementing the Trait
 
+Cons:
+- Enum not extensible anymore afterwards on the fly for new concrete types
+
 Example: 
 ```
 enum Personality { Father(Father), Mother(Mother), Angel(Angel) }
