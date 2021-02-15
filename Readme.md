@@ -5,7 +5,7 @@ https://www.twitch.tv/videos/903845418
 Example: ```let people: Vec<Box<dyn trait>> = vec![josef, maria, gabriel]```
 
 Cons:
-- Getting from ```Box<dyn trait>``` back to the concrete Type is easily possible anymore.
+- Getting from ```Box<dyn trait>``` back to the concrete Type is NOT easily possible anymore.
 
 # Alternative solution for using ```Box<dyn trait>``` for Traits: https://bennetthardwick.com/blog/dont-use-boxed-trait-objects-for-struct-internals/
 Define an Enum containing all subtypes and implementing the Trait
